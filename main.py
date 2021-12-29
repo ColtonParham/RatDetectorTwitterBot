@@ -1,57 +1,88 @@
-#Using Tensorflow as the main Library for the NN - finishing config for tensor flow here
-
-import """Simple convolutional neural network classififer."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.layers import Dense, Flatten, Conv2D
+from tensorflow.keras import Model
 
-FLAGS = tf.flags.FLAGS
+mnist = keras.datasets.mnist
 
-def get_params():
-  """Model params."""
-  return {
-    "drop_rate": 0.5
-  }
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+x_train, x_test = x_train / 255.0, x_test / 255.0
 
-def model(features, labels, mode, params):
-  """CNN classifier model."""
-  images = features["image"]
-  labels = labels["label"]
+x_train = x_train[..., tf.newaxis]
+x_test = x_test[..., tf.newaxis]
 
-  tf.summary.image("images", images)
+train_ds = tf.data.Dataset.from_tensor_slices(
+    (x_train, y_train)).shuffle(10000).batch(32)
+test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(32)
 
-  drop_rate = params.drop_rate if mode == tf.estimator.ModeKeys.TRAIN else 0.0
+class MyModel(Model):
+    def __init__(self):
+        super(MyModel, self).__init__()
+        self.conv1 = Conv2D(32, 3, activation='relu')
+        self.flatten = Flatten()
+        self.d1 = Dense(128, activation='relu')
+        self.d2 = Dense(10, activation='softmax')
 
-  features = images
-  for i, filters in enumerate([32, 64, 128]):
-    features = tf.layers.conv2d(
-      features, filters=filters, kernel_size=3, padding="same",
-      name="conv_%d" % (i + 1))
-    features = tf.layers.max_pooling2d(
-      inputs=features, pool_size=2, strides=2, padding="same",
-      name="pool_%d" % (i + 1))
+    def call(self, x):
+        x = self.conv1(x)
+        x = self.flatten(x)
+        x = self.d1(x)
+        return self.d2(x)
 
-  features = tf.contrib.layers.flatten(features)
 
-  features = tf.layers.dropout(features, drop_rate)
-  features = tf.layers.dense(features, 512, name="dense_1")
+model = MyModel()
 
-  features = tf.layers.dropout(features, drop_rate)
-  logits = tf.layers.dense(features, params.num_classes, activation=None,
-               name="dense_2")
+loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
 
-  predictions = tf.argmax(logits, axis=1)
+optimizer = tf.keras.optimizers.Adam()
 
-  loss = tf.losses.sparse_softmax_cross_entropy(
-    labels=labels, logits=logits)
+train_loss = tf.keras.metrics.Mean(name='train_loss')
+train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
+    name='train_accuracy')
 
-  return {"predictions": predictions}, loss
+test_loss = tf.keras.metrics.Mean(name='test_loss')
+test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
+    name='test_accuracy')
 
-def eval_metrics(unused_params):
-  """Eval metrics."""
-  return {
-    "accuracy": tf.contrib.learn.MetricSpec(tf.metrics.accuracy)
-  }
+
+@tf.function
+def train_step(images, labels):
+    with tf.GradientTape() as tape:
+        predictions = model(images)
+        loss = loss_object(labels, predictions)
+    gradients = tape.gradient(loss, model.trainable_variables)
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+    train_loss(loss)
+    train_accuracy(labels, predictions)
+
+
+@tf.function
+def test_step(images, labels):
+    predictions = model(images)
+    t_loss = loss_object(labels, predictions)
+
+    test_loss(t_loss)
+    test_accuracy(labels, predictions)
+
+
+EPOCHS = 5
+
+for epoch in range(EPOCHS):
+    train_loss.reset_states()
+    train_accuracy.reset_states()
+    test_loss.reset_states()
+    test_accuracy.reset_states()
+
+    for images, labels in train_ds:
+        train_step(images, labels)
+
+    for test_images, test_labels in test_ds:
+        test_step(test_images, test_labels)
+#Testing Accuracy: 
+    template = 'Epoch {}, Loss: {}, Accuracy: {}, Test Loss: {}, Test Accuracy: {}'
+    print(template.format(epoch+1,
+                          train_loss.result(),
+                          train_accuracy.result()*100,
+                          test_loss.result(),
+                          test_accuracy.result()*100))
