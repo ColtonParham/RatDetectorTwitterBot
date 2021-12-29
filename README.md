@@ -10,3 +10,4 @@ https://docs.anaconda.com/anaconda/user-guide/tasks/tensorflow/
 https://docs.conda.io/en/latest/miniconda.html
 https://www.python.org/
 
+![alt text](http://url/to/NodeConfig.png)
