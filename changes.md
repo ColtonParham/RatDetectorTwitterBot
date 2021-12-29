@@ -1,0 +1,1 @@
+December 29th - 2021(3:00PM): Tensor Flow/Miniconda set up generically. Twitter Developer setup, and access to API SDK active. 
